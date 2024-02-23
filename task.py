@@ -6,6 +6,8 @@ from fastapi import FastAPI
 import asyncio
 from openai import OpenAI
 from typing import List
+import uvicorn
+from fastapi.responses import JSONResponse
 load_dotenv()
 app = FastAPI()
 connection_string=os.environ.get("CONNECTION_STRING")
@@ -16,18 +18,15 @@ data_collection = db['data']
 inserted_data_collection = db['inserted_data']
 
 
-async def main(new_question):
-    data=data_collection.find_one()
-    existing_questions = [item["Question"] for item in data['data']]
-    result = await match_question_and_retrieve_answer(new_question, existing_questions)
-    print(result)
-    return result
+
+
 
 async def get_gpt_match(questions_chunk: List[str], new_question: str) -> str:
     try:
         model = "gpt-3.5-turbo"
         client = OpenAI()
         questions = '\n'.join(questions_chunk)
+        print(questions,"questions")
         prompt=f'''
         Given the question below:
         {new_question}
@@ -52,56 +51,83 @@ async def get_gpt_match(questions_chunk: List[str], new_question: str) -> str:
         query_turbo_1=response.choices[0].message.content
         return query_turbo_1
     except Exception as e:
-        print(f"Error in get_gpt_match: {e}")
-        return ""
-
+        print(str(e))
+        return {"success":False, "message":"Failed to match question"}
 async def match_question_and_retrieve_answer(new_question: str, existing_questions: List[str]) -> dict:
     chunk_size = len(existing_questions) // 3
     question_chunks = [existing_questions[i:i + chunk_size] for i in range(0, len(existing_questions), chunk_size)]
 
     closest_questions = await asyncio.gather(*[get_gpt_match(chunk, new_question) for chunk in question_chunks])
+    print(closest_questions,'questions')
     closest_questions = [i for i in closest_questions if i!="None"]
     if len(closest_questions) == 0:
-        return {"No matching questions found"}
+        return {"success":True,"message":"No matching questions found"}
     else:
         while len(closest_questions)!=1:
             closest_questions = await asyncio.gather(*[get_gpt_match(chunk, new_question) for chunk in question_chunks])
             closest_questions = [i for i in closest_questions if i!="None"]
         result = closest_questions[0]
-    # Retrieve the answer from MongoDB
         answer_doc = data_collection.find_one()
         for item in answer_doc['data']:
             if item["Question"] == result:
                 answer=item["Answer"]
-                return {"question": result, "answer":answer}
+                data={
+                    "question":result,
+                    "answer":answer
+                }
+                return {"success":True,"message":"Question and Answer fetched successfully","data": data}
             else:
                 answer=None
-        
-        return {"question": result, "answer":answer}
-        
+        data={
+            "question":result,
+            "answer":answer
+        }
+        return {"success":True,"message":"Question and Answer fetched successfully","data": data}
 
+
+        
+async def main(new_question):
+    data=data_collection.find_one()
+    existing_questions = [item["Question"] for item in data['data']]
+    result = await match_question_and_retrieve_answer(new_question, existing_questions)
+    return result
 @app.post("/match_question")
 async def match_question(new_question:str):
-    result=await main(new_question)
-    return result
+    try:
+        result=await main(new_question)
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        print(str(e))
+        response={"success":False, "message":"Failed to match question"}
+        return JSONResponse(content=response, status_code=500)
 
 
-@app.get("/dump_data")
-async def read_qa():
+
+@app.post("/insert_data")
+async def insert_data(question:str, answer:str):
+    try:
+        obj={"Question":question,"Answer":answer}
+        data={
+            "data":obj
+        }
+        response=inserted_data_collection.insert_one(data)
+        return {"success":True,"message":"Data dumped into MongoDB successfully", "data":obj,"id":str(response.inserted_id)}
+    except Exception as e:
+        print(str(e))
+        response={"success":False, "message":"Failed to insert data"}
+        return JSONResponse(content=response, status_code=500)
+def dump_data_in_db():
     df = pd.read_excel('Backend Developer assessment - Data.xlsx')
     qa_list = df.to_dict('records')
     data={
         "data":qa_list
     }
-    response=data_collection.insert_one(data)
-    return {"message":"CSV Data dumped into MongoDB successfully", "data":qa_list,"id":str(response.inserted_id)}
-
-@app.post("/insert_data")
-async def insert_data(question:str, answer:str):
-    obj={"Question":question,"Answer":answer}
-    data={
-        "data":obj
-    }
-    response=inserted_data_collection.insert_one(data)
-    return {"message":"Data dumped into MongoDB successfully", "data":obj,"id":str(response.inserted_id)}
-    
+    data_collection.insert_one(data)
+    return {"success":True,"message":"CSV Data dumped into MongoDB successfully"}
+   
+if __name__ == "__main__":
+    data=data_collection.find_one()
+    if(not data):
+        dump_data_in_db()
+        print("Data dumped in mongodb collection 'data' ")
+    uvicorn.run("task:app", port=3000, reload=True)
