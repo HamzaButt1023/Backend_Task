@@ -1,0 +1,7 @@
+pandas==2.0.3
+dotenv==1.0.0
+pymongo==4.5.0
+fastapi==0.101.1
+sentence_transformers==2.2.2
+numpy==1.25.1
+uvicorn==0.23.2
