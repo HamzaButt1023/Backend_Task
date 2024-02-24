@@ -55,12 +55,10 @@ async def get_gpt_match(questions_chunk: List[str], new_question: str) -> str:
 async def match_question_and_retrieve_answer(new_question: str, existing_questions: List[str]) -> dict:
     chunk_size = len(existing_questions) // 3
     question_chunks = [existing_questions[i:i + chunk_size] for i in range(0, len(existing_questions), chunk_size)]
-
     closest_questions = await asyncio.gather(*[get_gpt_match(chunk, new_question) for chunk in question_chunks])
-    print(closest_questions,'questions')
     closest_questions = [i for i in closest_questions if i!="None"]
     if len(closest_questions) == 0:
-        return {"success":True,"message":"No matching questions found"}
+        return {"success":True,"message":"No matching question and answer found"}
     else:
         while len(closest_questions)!=1:
             closest_questions = await asyncio.gather(*[get_gpt_match(chunk, new_question) for chunk in question_chunks])
@@ -77,11 +75,7 @@ async def match_question_and_retrieve_answer(new_question: str, existing_questio
                 return {"success":True,"message":"Question and Answer fetched successfully","data": data}
             else:
                 answer=None
-        data={
-            "question":result,
-            "answer":answer
-        }
-        return {"success":True,"message":"Question and Answer fetched successfully","data": data}
+        return {"success":True,"message":"No matching question and answer found"}
 
 
         
