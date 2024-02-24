@@ -26,12 +26,11 @@ async def get_gpt_match(questions_chunk: List[str], new_question: str) -> str:
         model = "gpt-3.5-turbo"
         client = OpenAI()
         questions = '\n'.join(questions_chunk)
-        print(questions,"questions")
         prompt=f'''
         Given the question below:
         {new_question}
 
-        I want you to return the question which is the most semantically similar and similiar in meaning and similar in what is asked, from this list of questions below
+        I want you to return the question which is the most semantically and contextually similar and similiar in meaning from this list of questions below
         {questions}
 
         If no question from the list meets the matching criteria, return "None". Otherwise, return ONLY the matching question.
